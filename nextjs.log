@@ -1,0 +1,27 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.56.1:3000
+✓ Ready in 1779ms
+
+○ Compiling /dashboard ...
+ GET /dashboard 200 in 9.0s (next.js: 7.9s, application-code: 1061ms)
+ GET /dashboard 200 in 388ms (next.js: 101ms, application-code: 287ms)
+ GET / 307 in 1823ms (next.js: 891ms, application-code: 932ms)
+ GET /dashboard 200 in 867ms (next.js: 99ms, application-code: 769ms)
+ GET /dashboard 200 in 362ms (next.js: 17ms, application-code: 345ms)
+ GET /dashboard 200 in 331ms (next.js: 15ms, application-code: 316ms)
+ GET /dashboard 200 in 507ms (next.js: 33ms, application-code: 474ms)
+ GET /dashboard 200 in 188ms (next.js: 9ms, application-code: 178ms)
+ GET /dashboard 200 in 330ms (next.js: 27ms, application-code: 303ms)
+ GET /dashboard 200 in 330ms (next.js: 24ms, application-code: 306ms)
+ GET /dashboard 200 in 300ms (next.js: 11ms, application-code: 290ms)
+ GET /dashboard 200 in 408ms (next.js: 16ms, application-code: 392ms)
+ GET /dashboard 200 in 386ms (next.js: 9ms, application-code: 377ms)
+ GET /dashboard 200 in 532ms (next.js: 28ms, application-code: 503ms)
+ GET /dashboard 200 in 188ms (next.js: 23ms, application-code: 165ms)
+ GET /dashboard 200 in 305ms (next.js: 23ms, application-code: 282ms)
+[?25h
