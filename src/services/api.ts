@@ -1,240 +1,236 @@
+﻿import {
+  mockPerformanceMetrics,
+  mockShipments,
+  mockWeatherAlerts,
+  type IoTSensorData,
+  type PerformanceMetric,
+  type PredictionResponse,
+  type RecommendationResponse,
+  type RiskResponse,
+  type Shipment,
+  type ShipmentLocation,
+  type WeatherAlert,
+} from "@/services/mockData";
+
 const API_URL = "http://127.0.0.1:8000";
 
-export interface ShipmentLocation {
-  latitude: number;
-  longitude: number;
-}
-
-export interface Shipment {
-  id: string;
-  origin: string;
-  destination: string;
-  current_location: ShipmentLocation;
-  eta: string;
-  status: string;
-}
-
-export interface RiskResponse {
-  shipment_id: string;
-  risk_score: number;
-  risk_level: string;
-  reason: string;
-}
-
-export interface PredictionResponse {
-  shipment_id: string;
-  predicted_delay_minutes: number;
-  confidence: number;
-  reason: string;
-}
-
-export interface RecommendationResponse {
-  shipment_id: string;
-  action: string;
-  reason: string;
-  impact: string;
-}
+export type {
+  IoTSensorData,
+  PerformanceMetric,
+  PredictionResponse,
+  RecommendationResponse,
+  RiskResponse,
+  Shipment,
+  ShipmentLocation,
+  WeatherAlert,
+};
 
 export interface ShipmentCreate {
   origin: string;
   destination: string;
   current_location: ShipmentLocation;
   eta: string;
-  status?: string;
+  status?: Shipment["status"];
+  carrier?: string;
+  cargo_type?: string;
+  weight_kg?: number;
+  priority?: Shipment["priority"];
 }
 
-let MOCK_MODE = true;
+let mockMode = true;
 
-const MOCK_SHIPMENTS: Shipment[] = [
-  {
-    id: "SHIP-1001",
-    origin: "San Francisco",
-    destination: "Tokyo",
-    current_location: { latitude: 37.7749, longitude: -122.4194 },
-    eta: new Date(Date.now() + 172800000).toISOString(),
-    status: "in_transit"
-  },
-  {
-    id: "SHIP-1002",
-    origin: "London",
-    destination: "Berlin",
-    current_location: { latitude: 51.5074, longitude: -0.1278 },
-    eta: new Date(Date.now() + 86400000).toISOString(),
-    status: "delayed"
-  }
-];
+const levelFromScore = (score: number): RiskResponse["risk_level"] => {
+  if (score >= 70) return "high";
+  if (score >= 45) return "medium";
+  return "low";
+};
+
+const mockRisk = (id: string): RiskResponse => {
+  const shipment = mockShipments.find((s) => s.id === id);
+  const score = shipment?.risk_score ?? 50;
+  return {
+    shipment_id: id,
+    risk_score: score,
+    risk_level: levelFromScore(score),
+    reason:
+      score > 70
+        ? "Multi-factor threat fusion detected congestion and weather volatility on the current corridor."
+        : "Risk remains controlled with minor sensor and timing deviations.",
+  };
+};
+
+const mockPrediction = (id: string): PredictionResponse => {
+  const shipment = mockShipments.find((s) => s.id === id);
+  return {
+    shipment_id: id,
+    predicted_delay_minutes: shipment?.prediction_delay_minutes ?? 20,
+    confidence: 0.78 + ((shipment?.risk_score ?? 40) % 20) / 100,
+    reason: "Sequence model detected potential queue buildup at destination handling zone.",
+  };
+};
+
+const mockRecommendation = (id: string): RecommendationResponse => {
+  const shipment = mockShipments.find((s) => s.id === id);
+  const risky = (shipment?.risk_score ?? 0) > 70;
+  return {
+    shipment_id: id,
+    action: risky ? "reroute" : "monitor",
+    reason: shipment?.recommendation ?? "Continue normal operating profile.",
+    impact: risky ? "Projected delay reduction: 14%" : "Operational stability maintained",
+    confidence: risky ? 0.93 : 0.81,
+  };
+};
 
 export const api = {
   async getShipments(): Promise<Shipment[]> {
     try {
-      const res = await fetch(`${API_URL}/shipments`, { cache: 'no-store' });
-      if (!res.ok) throw new Error();
-      MOCK_MODE = false;
-      return res.json();
-    } catch (e) {
-      MOCK_MODE = true;
-      console.warn("Backend unreachable. Entering Mock Mode.");
-      return MOCK_SHIPMENTS;
+      const res = await fetch(`${API_URL}/shipments`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Shipment fetch failed");
+      mockMode = false;
+      return (await res.json()) as Shipment[];
+    } catch {
+      mockMode = true;
+      return mockShipments;
     }
   },
 
   async createShipment(data: ShipmentCreate): Promise<Shipment> {
-    if (MOCK_MODE) {
-      const newShip: Shipment = { 
-        ...data, 
-        id: `MOCK-${Math.floor(Math.random()*1000)}`,
-        status: data.status || "pending"
+    if (mockMode) {
+      const shipment: Shipment = {
+        id: `SHIP-MOCK-${Math.floor(Math.random() * 9000)}`,
+        origin: data.origin,
+        destination: data.destination,
+        current_location: data.current_location,
+        eta: data.eta,
+        status: data.status ?? "in_transit",
+        carrier: data.carrier ?? "Demo Carrier",
+        cargo_type: data.cargo_type ?? "General Freight",
+        weight_kg: data.weight_kg ?? 8500,
+        priority: data.priority ?? "normal",
+        route: [
+          { label: data.origin, eta: new Date().toISOString() },
+          { label: data.destination, eta: data.eta },
+        ],
+        risk_score: 36,
+        sensor_data: { temperature: 19, humidity: 58, shock_events: 0, battery_level: 94 },
+        recommendation: "Maintain route plan and monitor queue thresholds.",
+        prediction_delay_minutes: 24,
       };
-      MOCK_SHIPMENTS.push(newShip);
-      return newShip;
+      mockShipments.unshift(shipment);
+      return shipment;
     }
+
     const res = await fetch(`${API_URL}/shipments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error("Failed to create shipment");
-    return res.json();
-  },
-
-  async getRisk(id: string): Promise<RiskResponse> {
-    if (MOCK_MODE) {
-      const reasons = [
-        "Unusual dwell time detected at major terminal hub.",
-        "Geopolitical volatility in transit corridor.",
-        "Severe weather front approaching destination port.",
-        "Predictive sensor anomaly on asset telemetry.",
-        "Historical delay patterns correlate with current trajectory."
-      ];
-      return { 
-        shipment_id: id, 
-        risk_score: Math.floor(Math.random() * 90), 
-        risk_level: Math.random() > 0.7 ? "high" : "medium", 
-        reason: reasons[Math.floor(Math.random() * reasons.length)] 
-      };
-    }
-    const res = await fetch(`${API_URL}/shipments/${id}/risk`, { cache: 'no-store' });
-    if (!res.ok) throw new Error("Failed to fetch risk");
-    return res.json();
-  },
-
-  async getPrediction(id: string): Promise<PredictionResponse> {
-    if (MOCK_MODE) {
-      const reasons = [
-        "Congestion at Suez Canal causing ripple delays.",
-        "Machine Learning model predicts 14% chance of reroute.",
-        "Satellite data shows traffic buildup in Sector 4.",
-        "Fuel efficiency optimization suggesting speed reduction."
-      ];
-      return { 
-        shipment_id: id, 
-        predicted_delay_minutes: Math.floor(Math.random() * 120), 
-        confidence: 0.85 + Math.random() * 0.1, 
-        reason: reasons[Math.floor(Math.random() * reasons.length)] 
-      };
-    }
-    const res = await fetch(`${API_URL}/shipments/${id}/prediction`, { cache: 'no-store' });
-    if (!res.ok) throw new Error("Failed to fetch prediction");
-    return res.json();
-  },
-
-  async getRecommendation(id: string): Promise<RecommendationResponse> {
-    if (MOCK_MODE) {
-      const actions: any[] = ["reroute", "reschedule", "no_action"];
-      const reasons = [
-        "Avoid high-congestion zone identified by AI core.",
-        "Optimize carbon footprint by switching to rail freight.",
-        "Maintain current course - minimal risk detected.",
-        "Priority bypass available for high-value cargo."
-      ];
-      const selectedAction = actions[Math.floor(Math.random() * actions.length)];
-      return { 
-        shipment_id: id, 
-        action: selectedAction, 
-        reason: reasons[Math.floor(Math.random() * reasons.length)], 
-        impact: selectedAction === "reroute" ? "Reduces fuel consumption by 14%" : "Maintains 98% reliability score" 
-      };
-    }
-    const res = await fetch(`${API_URL}/shipments/${id}/recommendation`, { cache: 'no-store' });
-    if (!res.ok) throw new Error("Failed to fetch recommendation");
-    return res.json();
+    return (await res.json()) as Shipment;
   },
 
   async deleteShipment(id: string): Promise<void> {
-    if (MOCK_MODE) {
-      const idx = MOCK_SHIPMENTS.findIndex(s => s.id === id);
-      if (idx > -1) MOCK_SHIPMENTS.splice(idx, 1);
+    if (mockMode) {
+      const index = mockShipments.findIndex((s) => s.id === id);
+      if (index >= 0) mockShipments.splice(index, 1);
       return;
     }
-    const res = await fetch(`${API_URL}/shipments/${id}`, {
-      method: "DELETE",
-    });
+
+    const res = await fetch(`${API_URL}/shipments/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error("Failed to delete shipment");
   },
 
-  async simulate(): Promise<any> {
-    if (MOCK_MODE) {
-      MOCK_SHIPMENTS.forEach(s => {
+  async getRisk(id: string): Promise<RiskResponse> {
+    if (mockMode) return mockRisk(id);
+    const res = await fetch(`${API_URL}/shipments/${id}/risk`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch risk");
+    return (await res.json()) as RiskResponse;
+  },
+
+  async getPrediction(id: string): Promise<PredictionResponse> {
+    if (mockMode) return mockPrediction(id);
+    const res = await fetch(`${API_URL}/shipments/${id}/prediction`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch prediction");
+    return (await res.json()) as PredictionResponse;
+  },
+
+  async getRecommendation(id: string): Promise<RecommendationResponse> {
+    if (mockMode) return mockRecommendation(id);
+    const res = await fetch(`${API_URL}/shipments/${id}/recommendation`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch recommendation");
+    return (await res.json()) as RecommendationResponse;
+  },
+
+  async getWeatherAlerts(): Promise<WeatherAlert[]> {
+    if (mockMode) return mockWeatherAlerts;
+    try {
+      const res = await fetch(`${API_URL}/weather-alerts`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      return (await res.json()) as WeatherAlert[];
+    } catch {
+      return mockWeatherAlerts;
+    }
+  },
+
+  async getPerformanceMetrics(): Promise<PerformanceMetric[]> {
+    if (mockMode) return mockPerformanceMetrics;
+    try {
+      const res = await fetch(`${API_URL}/analytics/metrics`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      return (await res.json()) as PerformanceMetric[];
+    } catch {
+      return mockPerformanceMetrics;
+    }
+  },
+
+  async simulate(): Promise<{ status: string; mode: "mock" | "api" }> {
+    if (mockMode) {
+      mockShipments.forEach((s) => {
         if (s.status !== "delivered") {
-          s.current_location.latitude += (Math.random() - 0.5) * 0.1;
-          s.current_location.longitude += (Math.random() - 0.5) * 0.1;
+          s.current_location.latitude += (Math.random() - 0.5) * 0.6;
+          s.current_location.longitude += (Math.random() - 0.5) * 0.6;
         }
       });
       return { status: "success", mode: "mock" };
     }
-    const res = await fetch(`${API_URL}/shipments/simulate`, {
-      method: "POST",
-    });
+    const res = await fetch(`${API_URL}/shipments/simulate`, { method: "POST" });
     if (!res.ok) throw new Error("Failed to run simulation");
-    return res.json();
+    return { status: "success", mode: "api" };
   },
 
-  async bulkGenerate(count: number = 10): Promise<any> {
-    if (MOCK_MODE) {
-      for (let i = 0; i < count; i++) {
-        MOCK_SHIPMENTS.push({
-          id: `MOCK-${Math.floor(Math.random()*10000)}`,
-          origin: "Origin City",
-          destination: "Target Port",
-          current_location: { latitude: Math.random() * 180 - 90, longitude: Math.random() * 360 - 180 },
-          eta: new Date(Date.now() + Math.random() * 1000000000).toISOString(),
-          status: "in_transit"
+  async bulkGenerate(count = 10): Promise<{ status: string; mode: "mock" | "api" }> {
+    if (mockMode) {
+      for (let i = 0; i < count; i += 1) {
+        mockShipments.push({
+          ...mockShipments[i % mockShipments.length],
+          id: `SHIP-BULK-${Math.floor(Math.random() * 100000)}`,
         });
       }
       return { status: "success", mode: "mock" };
     }
-    const res = await fetch(`${API_URL}/shipments/bulk-generate?count=${count}`, {
-      method: "POST",
-    });
-    if (!res.ok) throw new Error("Failed to generate bulk data");
-    return res.json();
+    const res = await fetch(`${API_URL}/shipments/bulk-generate?count=${count}`, { method: "POST" });
+    if (!res.ok) throw new Error("Failed to generate bulk shipments");
+    return { status: "success", mode: "api" };
   },
 
-  async resetSimulation(): Promise<any> {
-    if (MOCK_MODE) {
-      MOCK_SHIPMENTS.length = 0;
+  async resetSimulation(): Promise<{ status: string; mode: "mock" | "api" }> {
+    if (mockMode) {
+      mockShipments.splice(20);
       return { status: "success", mode: "mock" };
     }
-    const res = await fetch(`${API_URL}/shipments/reset-simulation`, {
-      method: "POST",
-    });
+    const res = await fetch(`${API_URL}/shipments/reset-simulation`, { method: "POST" });
     if (!res.ok) throw new Error("Failed to reset simulation");
-    return res.json();
+    return { status: "success", mode: "api" };
   },
 
-  async runScenario(name: string): Promise<any> {
-    if (MOCK_MODE) {
-      if (name === "storm") {
-        MOCK_SHIPMENTS.forEach(s => s.status = "delayed");
-      } else if (name === "recovery") {
-        MOCK_SHIPMENTS.forEach(s => s.status = "in_transit");
-      }
+  async runScenario(name: string): Promise<{ status: string; mode: "mock" | "api"; scenario: string }> {
+    if (mockMode) {
+      if (name === "storm") mockShipments.forEach((s) => (s.status = "delayed"));
+      if (name === "recovery") mockShipments.forEach((s) => (s.status = "in_transit"));
       return { status: "success", mode: "mock", scenario: name };
     }
-    const res = await fetch(`${API_URL}/shipments/scenario/${name}`, {
-      method: "POST",
-    });
+    const res = await fetch(`${API_URL}/shipments/scenario/${name}`, { method: "POST" });
     if (!res.ok) throw new Error("Failed to run scenario");
-    return res.json();
-  }
+    return { status: "success", mode: "api", scenario: name };
+  },
 };
